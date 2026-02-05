@@ -1,0 +1,58 @@
+name: Compatible Static Build (Kernel 5.10+)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: debian:11-slim  # Matches kernel 5.10 era for GLIBC compatibility
+
+    steps:
+      - name: Install System Dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential \
+            git \
+            yasm \
+            pkg-config \
+            libsmbclient-dev \
+            libgnutls28-dev \
+            zlib1g-dev \
+            libtasn1-6-dev \
+            nettle-dev \
+            libhogweed-dev \
+            ca-certificates
+
+      - name: Clone FFmpeg
+        run: git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git
+
+      - name: Configure and Static Build
+        working-directory: ./ffmpeg
+        run: |
+          export PKG_CONFIG="pkg-config --static"
+          
+          ./configure \
+            --pkg-config-flags="--static" \
+            --extra-libs="-lpthread -lm -ldl -lrt" \
+            --enable-static \
+            --disable-shared \
+            --enable-libsmbclient \
+            --enable-gnutls \
+            --disable-doc \
+            --disable-ffmpeg \
+            --disable-ffplay \
+            --disable-ffserver \
+            --pkg-config="pkg-config"
+          
+          make -j$(nproc)
+
+      - name: Strip Binary
+        run: strip ffmpeg/ffprobe  # Reduces file size significantly
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffprobe-linux-5.10-compat
+          path: ffmpeg/ffprobe
